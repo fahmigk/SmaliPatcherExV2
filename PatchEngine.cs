@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace SmaliPatcherExV2
+namespace SmaliPatcherEx
 {
     public class SmaliPatch
     {
@@ -17,18 +17,7 @@ namespace SmaliPatcherExV2
 
     public static class PatchDefinitions
     {
-        public static readonly List<SmaliPatch> All = new()
-        {
-            new SmaliPatch
-            {
-                Name = "Template Patch",
-                Description = "Example patch entry. Replace with your real patch definitions.",
-                FileGlob = "LocationProviderManager.smali",
-                Search = "",
-                Replace = "",
-                EnabledByDefault = false
-            }
-        };
+        public static readonly List<SmaliPatch> All = new List<SmaliPatch>();
     }
 
     public class PatchResult
@@ -57,7 +46,7 @@ namespace SmaliPatcherExV2
                 string partialDir = normalized.Substring(0, normalized.Length - fileName.Length).Trim('/');
 
                 return Directory.EnumerateFiles(rootPath, fileName, SearchOption.AllDirectories)
-                    .Where(f => f.Replace('\\', '/').Contains(partialDir, StringComparison.OrdinalIgnoreCase))
+                    .Where(f => f.Replace('\\', '/').IndexOf(partialDir, StringComparison.OrdinalIgnoreCase) >= 0)
                     .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
                     .ToList();
             }
@@ -84,7 +73,7 @@ namespace SmaliPatcherExV2
             var files = FindCandidateFiles(rootPath, patch.FileGlob);
             if (files.Count == 0)
             {
-                result.Message = $"No file matched: {patch.FileGlob}";
+                result.Message = "No file matched: " + patch.FileGlob;
                 return result;
             }
 
@@ -99,10 +88,10 @@ namespace SmaliPatcherExV2
                     return result;
                 }
 
-                if (!text.Contains(patch.Search, StringComparison.Ordinal))
+                if (text.IndexOf(patch.Search, StringComparison.Ordinal) < 0)
                     continue;
 
-                var updated = text.Replace(patch.Search, patch.Replace ?? "", StringComparison.Ordinal);
+                var updated = text.Replace(patch.Search, patch.Replace ?? "");
 
                 if (updated == text)
                     continue;
