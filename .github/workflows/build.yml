@@ -17,15 +17,39 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Download baksmali and smali JARs
+        shell: pwsh
+        run: |
+          $bak = "https://github.com/google/smali/releases/download/3.0.9/baksmali-3.0.9.jar"
+          $sma = "https://github.com/google/smali/releases/download/3.0.9/smali-3.0.9.jar"
+          New-Item -ItemType Directory -Force -Path tools | Out-Null
+          Invoke-WebRequest -Uri $bak -OutFile tools/baksmali.jar
+          Invoke-WebRequest -Uri $sma -OutFile tools/smali.jar
+          Write-Host "JARs downloaded"
+
       - name: Restore
         run: dotnet restore SmaliPatcherEx.csproj
 
       - name: Build EXE
-        run: dotnet publish SmaliPatcherEx.csproj --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=true --output ./publish
+        run: |
+          dotnet publish SmaliPatcherEx.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            --output ./publish
+
+      - name: Copy JARs next to EXE
+        shell: pwsh
+        run: |
+          Copy-Item tools/baksmali.jar publish/baksmali.jar
+          Copy-Item tools/smali.jar publish/smali.jar
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: SmaliPatcherEx-Windows-x64
-          path: ./publish/SmaliPatcherEx.exe
+          path: publish/
           retention-days: 90
