@@ -20,10 +20,10 @@ namespace SmaliPatcherEx
 
     public class PatchResult
     {
-        public SmaliPatch Patch    { get; init; } = null!;
-        public bool       Applied  { get; set; }
-        public List<string> Files  { get; } = new();
-        public string     Reason   { get; set; } = "";
+        public SmaliPatch    Patch   { get; init; } = null!;
+        public bool          Applied { get; set; }
+        public List<string>  Files   { get; } = new();
+        public string        Reason  { get; set; } = "";
     }
 
     public static class PatchDefinitions
@@ -31,43 +31,44 @@ namespace SmaliPatcherEx
         public static readonly List<SmaliPatch> All = new()
         {
             // ── MOCK LOCATION ──────────────────────────────────────────────────────
+            // Android 13–16: addTestProvider uses AppOpsHelper.noteOp(...)Z.
             new SmaliPatch
             {
                 Name        = "mock_location_appops",
-                Description = "Mock Location — bypass AppOps MOCK_LOCATION check",
+                Description = "Mock Location — bypass addTestProvider AppOps noteOp gate (Android 13–16)",
                 FileGlob    = "location/LocationManagerService.smali",
-                Search      = @"(invoke-virtual \{[vp]\d+(?:, [vp]\d+)*\}, Landroid/app/AppOpsManager;->(?:checkOp|noteOp|checkOpNoThrow)\([^)]+\)I\s*\n\s*move-result ([vp]\d+)\s*\n)(\s*(?:const/4|const/16) [vp]\d+, 0x0\s*\n)(\s*if-(?:ne|eq)z? \2[^:]*:cond_\w+)",
-                Replace     = "$1$3    goto :goto_mock_allowed",
-                AndroidMin  = 10,
-                Multi       = true,
-            },
-            new SmaliPatch
-            {
-                Name        = "mock_location_isprovider",
-                Description = "Mock Location — isMockProvider always returns true",
-                FileGlob    = "location/LocationManagerService.smali",
-                Search      = @"(\.method (?:public|private|protected)(?: \w+)* isMockProvider\(Ljava/lang/String;\)Z\s*\n)(\s*\.locals \d+)",
-                Replace     = "$1    .locals 1\n    const/4 v0, 0x1\n    return v0\n\n    # patched by SmaliPatcherEx v2.0\n",
-                AndroidMin  = 12,
-            },
-            new SmaliPatch
-            {
-                Name        = "mock_location_provider_manager",
-                Description = "Mock Location — LocationProviderManager (Android 13–16)",
-                FileGlob    = "location/provider/LocationProviderManager.smali",
-                Search      = @"(invoke-virtual \{[vp]\d+(?:, [vp]\d+)*\}, Lcom/android/server/location/injector/AppOpsHelper;->checkOpNoThrow\([^)]+\)[IZ]\s*\n)(\s*move-result [vp]\d+\s*\n)(\s*if-(?:ne|eq)z? [vp]\d+[^:]*:cond_\w+)",
-                Replace     = "$1$2    goto :goto_mock_ok",
+                Search      = @"(invoke-virtual \{[vp]\d+, [vp]\d+\}, Lcom/android/server/location/injector/AppOpsHelper;->noteOp\(ILandroid/location/util/identity/CallerIdentity;\)Z\s*\n\s*move-result ([vp]\d+)\s*\n\s*if-nez \2, :cond_[A-Za-z0-9_]+\s*\n\s*return-void)",
+                // Replace the whole check + early return with a constant true
+                Replace     = @"    const/4 v0, 0x1
+",
                 AndroidMin  = 13,
-                Multi       = true,
             },
+
+            // AppOpsHelper noteOp itself – force allow.
             new SmaliPatch
             {
                 Name        = "mock_location_appops_helper",
-                Description = "Mock Location — AppOpsHelper.checkOpNoThrow (Android 14–16)",
+                Description = "Mock Location — AppOpsHelper.noteOp always allow (Android 14–16)",
                 FileGlob    = "location/injector/AppOpsHelper.smali",
-                Search      = @"(\.method (?:public)(?: \w+)* checkOpNoThrow\([^)]*\)[IZ]\s*\n)(\s*\.locals \d+)",
-                Replace     = "$1    .locals 1\n    const/4 v0, 0x0\n    return v0\n\n    # patched: AppOpsHelper\n",
+                Search      = @"(\.method public(?: final)? noteOp\(ILandroid/location/util/identity/CallerIdentity;\)Z\s*\n)(\s*\.registers \d+|\s*\.locals \d+)",
+                Replace     = @"$1    .locals 1
+    const/4 v0, 0x1
+    return v0
+
+    # patched: AppOpsHelper noteOp allow
+",
                 AndroidMin  = 14,
+            },
+
+            // Keep placeholder for LocationProviderManager if you later want to patch it.
+            new SmaliPatch
+            {
+                Name        = "mock_location_provider_manager",
+                Description = "Mock Location — LocationProviderManager setMockProvider path (Android 13–16)",
+                FileGlob    = "location/provider/LocationProviderManager.smali",
+                Search      = @"(\.method .* setMockProvider\(Lcom/android/server/location/provider/MockLocationProvider;\)V\s*\n)(\s*\.registers \d+|\s*\.locals \d+)",
+                Replace     = "$1$2\n",
+                AndroidMin  = 13,
             },
 
             // ── MOCK PERMISSION ────────────────────────────────────────────────────
@@ -76,8 +77,9 @@ namespace SmaliPatcherEx
                 Name        = "mock_permission_dpm",
                 Description = "Mock Permission — DevicePolicyManager DISALLOW_MOCK_LOCATION",
                 FileGlob    = "devicepolicy/DevicePolicyManagerService.smali",
-                Search      = @"(const-string [vp]\d+, ""no_mock_location""\s*\n)(\s*invoke-\w+ \{[^}]+\}[^\n]+\n)(\s*(?:move-result|move-result-object) [vp]\d+\s*\n)(\s*if-(?:eq|ne)z? [vp]\d+[^:]*:cond_\w+)",
-                Replace     = "$1    # SmaliPatcherEx: mock_permission bypass\n    goto :goto_mock_perm_ok",
+                Search      = @"(const-string [vp]\d+, ""no_mock_location""\s*\n)(\s*invoke-\w+ \{[^}]+\}[^\\n]+\n)(\s*(?:move-result|move-result-object) [vp]\d+\s*\n)(\s*if-(?:eq|ne)z? [vp]\d+[^:]*:cond_\w+)",
+                Replace     = @"$1    # SmaliPatcherEx: mock_permission bypass
+    goto :goto_mock_perm_ok",
                 AndroidMin  = 5,
                 Multi       = true,
             },
@@ -86,9 +88,25 @@ namespace SmaliPatcherEx
                 Name        = "mock_permission_restrictions",
                 Description = "Mock Permission — UserRestrictionsUtils (Android 11+)",
                 FileGlob    = "pm/UserRestrictionsUtils.smali",
-                Search      = @"(const-string [vp]\d+, ""no_mock_location""\s*\n)((?:.*\n)*?)(\s*invoke-\w+ \{[^}]+\}[^\n]*\(Landroid/os/Bundle;Ljava/lang/String;\)[^\n]*\n)",
-                Replace     = "$1$2    # patched: mock_permission_restrictions\n",
+                Search      = @"(const-string [vp]\d+, ""no_mock_location""\s*\n)((?:.*\n)*?)(\s*invoke-\w+ \{[^}]+\}[^\\n]*\(Landroid/os/Bundle;Ljava/lang/String;\)[^\\n]*\n)",
+                Replace     = @"$1$2    # patched: mock_permission_restrictions
+",
                 AndroidMin  = 11,
+            },
+
+            // Force LOCATION_BYPASS permission success in LocationPermissions.
+            new SmaliPatch
+            {
+                Name        = "mock_permission_location_bypass",
+                Description = "Mock Permission — force LOCATION_BYPASS success in LocationPermissions",
+                FileGlob    = "location/LocationPermissions.smali",
+                Search      = @"(\.method public static enforceBypassPermission\(Landroid/content/Context;II\)V\s*\n)(\s*\.registers \d+|\s*\.locals \d+)",
+                Replace     = @"$1    .locals 0
+    return-void
+
+    # patched: LOCATION_BYPASS always allowed
+",
+                AndroidMin  = 13,
             },
 
             // ── GNSS ───────────────────────────────────────────────────────────────
@@ -98,19 +116,9 @@ namespace SmaliPatcherEx
                 Description = "GNSS Mock Provider — GnssManagerService (Android 13–16)",
                 FileGlob    = "location/gnss/GnssManagerService.smali",
                 Search      = @"(invoke-virtual \{[vp]\d+(?:, [vp]\d+)*\}, Landroid/app/AppOpsManager;->(?:checkOp|noteOp|noteOpNoThrow)\([^)]+\)[IZ]\s*\n)(\s*move-result [vp]\d+\s*\n)(\s*(?:const/4|const/16) [vp]\d+, 0x0\s*\n)(\s*if-(?:eq|ne) [vp]\d+, [vp]\d+[^:]*:cond_\w+)",
-                Replace     = "$1$2$3    goto :goto_gnss_ok",
+                Replace     = @"$1$2$3    goto :goto_gnss_ok",
                 AndroidMin  = 13,
                 Multi       = true,
-            },
-            new SmaliPatch
-            {
-                Name        = "gnss_location_provider_legacy",
-                Description = "GNSS Mock Provider — GnssLocationProvider (Android 9–12)",
-                FileGlob    = "location/GnssLocationProvider.smali",
-                Search      = @"(invoke-virtual \{[vp]\d+(?:, [vp]\d+)*\}, Landroid/app/AppOpsManager;->checkOpNoThrow\([^)]+\)I\s*\n)(\s*move-result [vp]\d+\s*\n)(\s*if-nez [vp]\d+[^:]*:cond_\w+)",
-                Replace     = "$1$2    # gnss_legacy patched",
-                AndroidMin  = 9,
-                AndroidMax  = 12,
             },
 
             // ── SIGNATURE SPOOFING ─────────────────────────────────────────────────
@@ -119,8 +127,13 @@ namespace SmaliPatcherEx
                 Name        = "signature_spoofing_pms",
                 Description = "Signature Spoofing — PackageManagerService (Android 5–13)",
                 FileGlob    = "pm/PackageManagerService.smali",
-                Search      = @"(\.method public checkSignatures\(II\)I\s*\n)(\s*\.locals \d+)",
-                Replace     = "$1    .locals 1\n    const/4 v0, 0x0\n    return v0\n\n    # SmaliPatcherEx: sig_spoof\n",
+                Search      = @"(\.method public checkSignatures\(II\)I\s*\n)(\s*\.locals \d+|\s*\.registers \d+)",
+                Replace     = @"$1    .locals 1
+    const/4 v0, 0x0
+    return v0
+
+    # SmaliPatcherEx: sig_spoof
+",
                 AndroidMin  = 5,
                 AndroidMax  = 13,
             },
@@ -129,17 +142,13 @@ namespace SmaliPatcherEx
                 Name        = "signature_spoofing_computer",
                 Description = "Signature Spoofing — ComputerEngine (Android 14–16)",
                 FileGlob    = "pm/ComputerEngine.smali",
-                Search      = @"(\.method public checkSignatures\(II\)I\s*\n)(\s*\.locals \d+)",
-                Replace     = "$1    .locals 1\n    const/4 v0, 0x0\n    return v0\n\n    # SmaliPatcherEx: sig_spoof_computer\n",
-                AndroidMin  = 14,
-            },
-            new SmaliPatch
-            {
-                Name        = "signature_spoofing_snapshot",
-                Description = "Signature Spoofing — Snapshot (Android 14–16)",
-                FileGlob    = "pm/Snapshot.smali",
-                Search      = @"(\.method public checkSignatures\(II\)I\s*\n)(\s*\.locals \d+)",
-                Replace     = "$1    .locals 1\n    const/4 v0, 0x0\n    return v0\n\n    # SmaliPatcherEx: sig_spoof_snapshot\n",
+                Search      = @"(\.method public checkSignatures\(II\)I\s*\n)(\s*\.locals \d+|\s*\.registers \d+)",
+                Replace     = @"$1    .locals 1
+    const/4 v0, 0x0
+    return v0
+
+    # SmaliPatcherEx: sig_spoof_computer
+",
                 AndroidMin  = 14,
             },
 
@@ -150,7 +159,8 @@ namespace SmaliPatcherEx
                 Description = "No Permission Review — skip REVIEW_REQUIRED flag",
                 FileGlob    = "permission/PermissionManagerService.smali",
                 Search      = @"(const-string [vp]\d+, ""android\.permission\.REVIEW_REQUIRED""\s*\n)((?:.*\n)*?)(\s*if-(?:eq|ne)z? [vp]\d+[^:]*:cond_\w+)",
-                Replace     = "$1$2    # SmaliPatcherEx: no_perm_review skipped\n    goto :goto_perm_ok",
+                Replace     = @"$1$2    # SmaliPatcherEx: no_perm_review skipped
+    goto :goto_perm_ok",
                 AndroidMin  = 10,
                 Multi       = true,
             },
@@ -161,48 +171,19 @@ namespace SmaliPatcherEx
                 Name        = "doze_whitelist",
                 Description = "Doze Whitelist — DeviceIdleController.isWhitelisted always true",
                 FileGlob    = "DeviceIdleController.smali",
-                Search      = @"(\.method public isWhitelisted\(Ljava/lang/String;Z\)Z\s*\n)(\s*\.locals \d+)",
-                Replace     = "$1    .locals 1\n    const/4 v0, 0x1\n    return v0\n\n    # SmaliPatcherEx: doze_whitelist\n",
+                Search      = @"(\.method public isWhitelisted\(Ljava/lang/String;Z\)Z\s*\n)(\s*\.locals \d+|\s*\.registers \d+)",
+                Replace     = @"$1    .locals 1
+    const/4 v0, 0x1
+    return v0
+
+    # SmaliPatcherEx: doze_whitelist
+",
                 AndroidMin  = 6,
-            },
-
-            // ── UNTRUSTED TOUCH ────────────────────────────────────────────────────
-            new SmaliPatch
-            {
-                Name        = "untrusted_touch",
-                Description = "Untrusted Touch — InputManagerService block bypass (Android 12–16)",
-                FileGlob    = "input/InputManagerService.smali",
-                Search      = @"(invoke-virtual \{[vp]\d+(?:, [vp]\d+)*\}, Landroid/view/InputEventReceiver;->shouldBlockUntrustedTouch\([^)]+\)Z\s*\n)(\s*move-result [vp]\d+\s*\n)(\s*if-(?:eq|ne)z? [vp]\d+[^:]*:cond_\w+)",
-                Replace     = "$1    const/4 v0, 0x0\n    # untrusted_touch patched",
-                AndroidMin  = 12,
-                Multi       = true,
-            },
-            new SmaliPatch
-            {
-                Name        = "untrusted_touch_wms",
-                Description = "Untrusted Touch — WindowManagerService overlay bypass (Android 12–16)",
-                FileGlob    = "wm/WindowManagerService.smali",
-                Search      = @"(const-string [vp]\d+, ""Untrusted touch due to""\s*\n)((?:.*\n){0,8}?)(\s*if-(?:eq|ne)z? [vp]\d+[^:]*:cond_\w+)",
-                Replace     = "$1$2    # untrusted_touch_wms patched\n    goto :goto_touch_ok",
-                AndroidMin  = 12,
-                Multi       = true,
-            },
-
-            // ── OVERLAY ────────────────────────────────────────────────────────────
-            new SmaliPatch
-            {
-                Name        = "overlay_any",
-                Description = "Overlay — allow unsigned overlays (Android 10–16)",
-                FileGlob    = "om/OverlayManagerService.smali",
-                Search      = @"(invoke-\w+ \{[^}]+\}[^\n]*->isSignatureMatch\([^)]+\)[IZB]\s*\n)(\s*move-result [vp]\d+\s*\n)(\s*if-(?:eq|ne)z? [vp]\d+[^:]*:cond_\w+)",
-                Replace     = "$1    const/4 v0, 0x1\n    # overlay_any patched\n",
-                AndroidMin  = 10,
-                Multi       = true,
             },
         };
 
         public static readonly Dictionary<string, SmaliPatch> Map =
-    All.ToDictionary(p => p.Name, StringComparer.OrdinalIgnoreCase);
+            All.ToDictionary(p => p.Name, StringComparer.OrdinalIgnoreCase);
     }
 
     public class PatchEngine
@@ -220,74 +201,74 @@ namespace SmaliPatcherEx
         private void Write(string msg) => Log?.Invoke(msg);
 
         private IEnumerable<string> GlobFiles(string pattern)
-{
-    var normalizedPattern = pattern.Replace('\\', '/').TrimStart('/');
-    var allFiles = Directory.GetFiles(_smaliRoot, "*.smali", SearchOption.AllDirectories);
+        {
+            var normalizedPattern = pattern.Replace('\\', '/').TrimStart('/');
+            var allFiles = Directory.GetFiles(_smaliRoot, "*.smali", SearchOption.AllDirectories);
 
-    return allFiles.Where(file =>
-    {
-        var relative = Path.GetRelativePath(_smaliRoot, file).Replace('\\', '/');
-        return relative.EndsWith(normalizedPattern, StringComparison.OrdinalIgnoreCase);
-    });
-}
+            return allFiles.Where(file =>
+            {
+                var relative = Path.GetRelativePath(_smaliRoot, file).Replace('\\', '/');
+                return relative.EndsWith(normalizedPattern, StringComparison.OrdinalIgnoreCase);
+            });
+        }
 
         public PatchResult Apply(SmaliPatch patch)
-{
-    var result = new PatchResult { Patch = patch };
-
-    if (_api < patch.AndroidMin || _api > patch.AndroidMax)
-    {
-        result.Reason = $"API {_api} out of range [{patch.AndroidMin}–{patch.AndroidMax}]";
-        return result;
-    }
-
-    var targets = GlobFiles(patch.FileGlob).ToList();
-    if (targets.Count == 0)
-    {
-        result.Reason = $"No file matched: {patch.FileGlob}";
-        return result;
-    }
-
-    foreach (var file in targets)
-    {
-        var text    = File.ReadAllText(file);
-        var options = RegexOptions.Multiline | RegexOptions.Singleline;
-
-        var matches = Regex.Matches(text, patch.Search, options, TimeSpan.FromSeconds(10));
-        var count   = matches.Count;
-        if (count == 0)
-            continue;
-
-        string patched;
-        if (patch.Multi)
         {
-            patched = Regex.Replace(text, patch.Search, patch.Replace, options, TimeSpan.FromSeconds(10));
-        }
-        else
-        {
-            var rx = new Regex(patch.Search, options, TimeSpan.FromSeconds(10));
-            patched = rx.Replace(text, patch.Replace, 1);
-            count = 1;
-        }
+            var result = new PatchResult { Patch = patch };
 
-        if (patched != text)
-        {
-            File.WriteAllText(file, patched);
-            var relative = Path.GetRelativePath(_smaliRoot, file).Replace('\\', '/');
-            result.Files.Add($"{relative} ({count}×)");
-            result.Applied = true;
+            if (_api < patch.AndroidMin || _api > patch.AndroidMax)
+            {
+                result.Reason = $"API {_api} out of range [{patch.AndroidMin}–{patch.AndroidMax}]";
+                return result;
+            }
+
+            var targets = GlobFiles(patch.FileGlob).ToList();
+            if (targets.Count == 0)
+            {
+                result.Reason = $"No file matched: {patch.FileGlob}";
+                return result;
+            }
+
+            foreach (var file in targets)
+            {
+                var text    = File.ReadAllText(file);
+                var options = RegexOptions.Multiline | RegexOptions.Singleline;
+
+                var matches = Regex.Matches(text, patch.Search, options, TimeSpan.FromSeconds(10));
+                var count   = matches.Count;
+                if (count == 0)
+                    continue;
+
+                string patched;
+                if (patch.Multi)
+                {
+                    patched = Regex.Replace(text, patch.Search, patch.Replace, options, TimeSpan.FromSeconds(10));
+                }
+                else
+                {
+                    var rx = new Regex(patch.Search, options, TimeSpan.FromSeconds(10));
+                    patched = rx.Replace(text, patch.Replace, 1);
+                    count = 1;
+                }
+
+                if (patched != text)
+                {
+                    File.WriteAllText(file, patched);
+                    var relative = Path.GetRelativePath(_smaliRoot, file).Replace('\\', '/');
+                    result.Files.Add($"{relative} ({count}×)");
+                    result.Applied = true;
+                }
+            }
+
+            if (!result.Applied)
+                result.Reason = "Pattern not found in matched file(s)";
+
+            return result;
         }
-    }
-
-    if (!result.Applied)
-        result.Reason = "Pattern not found in matched file(s)";
-
-    return result;
-}
 
         public Dictionary<string, PatchResult> RunAll(IEnumerable<string> names)
-{
-    var results = new Dictionary<string, PatchResult>(StringComparer.OrdinalIgnoreCase);
+        {
+            var results = new Dictionary<string, PatchResult>(StringComparer.OrdinalIgnoreCase);
             foreach (var name in names)
             {
                 if (!PatchDefinitions.Map.TryGetValue(name, out var patch))
@@ -295,9 +276,11 @@ namespace SmaliPatcherEx
                     Write($"[!] Unknown patch: {name}");
                     continue;
                 }
+
                 Write($"[*] Applying: {name} ...");
                 var r = Apply(patch);
                 results[name] = r;
+
                 if (r.Applied)
                     Write($"[✓] {name}: {string.Join(", ", r.Files)}");
                 else
