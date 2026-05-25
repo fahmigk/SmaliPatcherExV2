@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
 
 namespace SmaliPatcherEx
 {
@@ -35,11 +34,11 @@ namespace SmaliPatcherEx
                 Name        = "mock_location_appops",
                 Description = "Mock Location — flip addTestProvider AppOps branch only",
                 FileGlob    = "location/LocationManagerService.smali",
-                Search      = @"if-nez p5, :cond_13",
+                Search      = "if-nez p5, :cond_13",
                 Replace     = "if-eqz p5, :cond_13",
-                AndroidMin  = 13,
-                AndroidMax  = 16,
-            },
+                AndroidMin  = 33,
+                AndroidMax  = 36
+            }
         };
 
         public static readonly Dictionary<string, SmaliPatch> Map =
@@ -96,7 +95,10 @@ namespace SmaliPatcherEx
                 if (!text.Contains(patch.Search))
                     continue;
 
-                var patched = text.Replace(patch.Search, patch.Replace);
+                var patched = patch.Multi
+                    ? text.Replace(patch.Search, patch.Replace)
+                    : ReplaceFirst(text, patch.Search, patch.Replace);
+
                 if (patched != text)
                 {
                     File.WriteAllText(file, patched);
@@ -110,6 +112,15 @@ namespace SmaliPatcherEx
                 result.Reason = "Pattern not found in matched file(s)";
 
             return result;
+        }
+
+        private static string ReplaceFirst(string text, string search, string replace)
+        {
+            var index = text.IndexOf(search, StringComparison.Ordinal);
+            if (index < 0)
+                return text;
+
+            return text.Substring(0, index) + replace + text.Substring(index + search.Length);
         }
 
         public Dictionary<string, PatchResult> RunAll(IEnumerable<string> names)
