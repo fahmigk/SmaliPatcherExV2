@@ -1,56 +1,26 @@
-name: Build SmaliPatcherEx Windows EXE
+- name: Download baksmali/smali 3.0.9 fat JARs
+  shell: pwsh
+  run: |
+    $ErrorActionPreference = "Stop"
 
-on:
-  push:
-    branches: [ main, master ]
-  workflow_dispatch:
+    New-Item -ItemType Directory -Force -Path tools | Out-Null
 
-jobs:
-  build:
-    runs-on: windows-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    $version = "3.0.9"
 
-      - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
+    # Exact asset names from the v3.0.9 release
+    $bak = "https://github.com/baksmali/smali/releases/download/v$version/baksmali-$version-fat.jar"
+    $sma = "https://github.com/baksmali/smali/releases/download/v$version/smali-$version-fat.jar"
 
-      - name: Download fat JARs from baksmali/smali
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path tools | Out-Null
-          $bak = "https://github.com/baksmali/smali/releases/download/v3.0.9/baksmali-3.0.9-fat.jar"
-          $sma = "https://github.com/baksmali/smali/releases/download/v3.0.9/smali-3.0.9-fat.jar"
-          Invoke-WebRequest -Uri $bak -OutFile tools/baksmali.jar -UseBasicParsing
-          Invoke-WebRequest -Uri $sma -OutFile tools/smali.jar -UseBasicParsing
-          Write-Host "baksmali: $((Get-Item tools/baksmali.jar).Length) bytes"
-          Write-Host "smali:    $((Get-Item tools/smali.jar).Length) bytes"
+    Invoke-WebRequest -Uri $bak -OutFile tools/baksmali.jar -UseBasicParsing -ErrorAction Stop
+    Invoke-WebRequest -Uri $sma -OutFile tools/smali.jar   -UseBasicParsing -ErrorAction Stop
 
-      - name: Restore
-        run: dotnet restore SmaliPatcherEx.csproj
+    # Sanity checks so we don't silently save HTML/404 pages
+    if (-not (Test-Path tools/baksmali.jar) -or (Get-Item tools/baksmali.jar).Length -lt 100000) {
+      throw "baksmali.jar looks wrong or is too small"
+    }
+    if (-not (Test-Path tools/smali.jar) -or (Get-Item tools/smali.jar).Length -lt 100000) {
+      throw "smali.jar looks wrong or is too small"
+    }
 
-      - name: Build EXE
-        run: |
-          dotnet publish SmaliPatcherEx.csproj `
-            --configuration Release `
-            --runtime win-x64 `
-            --self-contained true `
-            -p:PublishSingleFile=true `
-            -p:IncludeNativeLibrariesForSelfExtract=true `
-            -p:EnableCompressionInSingleFile=true `
-            --output ./publish
-
-      - name: Copy JARs next to EXE
-        shell: pwsh
-        run: |
-          Copy-Item tools/baksmali.jar publish/baksmali.jar
-          Copy-Item tools/smali.jar    publish/smali.jar
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: SmaliPatcherEx-Windows-x64
-          path: publish/
-          retention-days: 90
+    Write-Host "baksmali: $((Get-Item tools/baksmali.jar).Length) bytes"
+    Write-Host "smali:    $((Get-Item tools/smali.jar).Length) bytes"
