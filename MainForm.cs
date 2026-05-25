@@ -15,7 +15,7 @@ namespace SmaliPatcherEx
     {
         private const string BAKSMALI_URL = "https://github.com/JesusFreke/smali/releases/download/v3.0.9/baksmali-3.0.9.jar";
         private const string SMALI_URL    = "https://github.com/JesusFreke/smali/releases/download/v3.0.9/smali-3.0.9.jar";
-        private static readonly string ToolDir     = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".smali_patcher_ex");
+        private static readonly string ToolDir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) ?? AppDomain.CurrentDomain.BaseDirectory;
         private static readonly string BaksmaliJar = Path.Combine(ToolDir, "baksmali.jar");
         private static readonly string SmaliJar    = Path.Combine(ToolDir, "smali.jar");
 
