@@ -17,15 +17,16 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Download baksmali and smali JARs
+      - name: Download baksmali and smali from Maven Central
         shell: pwsh
         run: |
-          $bak = "https://github.com/google/smali/releases/download/3.0.9/baksmali-3.0.9.jar"
-          $sma = "https://github.com/google/smali/releases/download/3.0.9/smali-3.0.9.jar"
           New-Item -ItemType Directory -Force -Path tools | Out-Null
-          Invoke-WebRequest -Uri $bak -OutFile tools/baksmali.jar
-          Invoke-WebRequest -Uri $sma -OutFile tools/smali.jar
-          Write-Host "JARs downloaded"
+          $bak = "https://repo1.maven.org/maven2/org/smali/baksmali/3.0.9/baksmali-3.0.9.jar"
+          $sma = "https://repo1.maven.org/maven2/org/smali/smali/3.0.9/smali-3.0.9.jar"
+          Invoke-WebRequest -Uri $bak -OutFile tools/baksmali.jar -UseBasicParsing
+          Invoke-WebRequest -Uri $sma -OutFile tools/smali.jar -UseBasicParsing
+          Write-Host "baksmali size: $((Get-Item tools/baksmali.jar).Length)"
+          Write-Host "smali size:    $((Get-Item tools/smali.jar).Length)"
 
       - name: Restore
         run: dotnet restore SmaliPatcherEx.csproj
@@ -45,7 +46,9 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item tools/baksmali.jar publish/baksmali.jar
-          Copy-Item tools/smali.jar publish/smali.jar
+          Copy-Item tools/smali.jar    publish/smali.jar
+          Write-Host "Contents of publish/:"
+          Get-ChildItem publish/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
