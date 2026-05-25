@@ -202,7 +202,7 @@ namespace SmaliPatcherEx
         };
 
         public static readonly Dictionary<string, SmaliPatch> Map =
-            All.ToDictionary(p => p.Name);
+    All.ToDictionary(p => p.Name, StringComparer.OrdinalIgnoreCase);
     }
 
     public class PatchEngine
@@ -220,66 +220,74 @@ namespace SmaliPatcherEx
         private void Write(string msg) => Log?.Invoke(msg);
 
         private IEnumerable<string> GlobFiles(string pattern)
-        {
-            var parts = pattern.Split('/');
-            return Directory.GetFiles(_smaliRoot, parts[^1],
-                SearchOption.AllDirectories);
-        }
+{
+    var normalizedPattern = pattern.Replace('\\', '/').TrimStart('/');
+    var allFiles = Directory.GetFiles(_smaliRoot, "*.smali", SearchOption.AllDirectories);
+
+    return allFiles.Where(file =>
+    {
+        var relative = Path.GetRelativePath(_smaliRoot, file).Replace('\\', '/');
+        return relative.EndsWith(normalizedPattern, StringComparison.OrdinalIgnoreCase);
+    });
+}
 
         public PatchResult Apply(SmaliPatch patch)
+{
+    var result = new PatchResult { Patch = patch };
+
+    if (_api < patch.AndroidMin || _api > patch.AndroidMax)
+    {
+        result.Reason = $"API {_api} out of range [{patch.AndroidMin}–{patch.AndroidMax}]";
+        return result;
+    }
+
+    var targets = GlobFiles(patch.FileGlob).ToList();
+    if (targets.Count == 0)
+    {
+        result.Reason = $"No file matched: {patch.FileGlob}";
+        return result;
+    }
+
+    foreach (var file in targets)
+    {
+        var text    = File.ReadAllText(file);
+        var options = RegexOptions.Multiline | RegexOptions.Singleline;
+
+        var matches = Regex.Matches(text, patch.Search, options, TimeSpan.FromSeconds(10));
+        var count   = matches.Count;
+        if (count == 0)
+            continue;
+
+        string patched;
+        if (patch.Multi)
         {
-            var result = new PatchResult { Patch = patch };
-
-            if (_api < patch.AndroidMin || _api > patch.AndroidMax)
-            {
-                result.Reason = $"API {_api} out of range [{patch.AndroidMin}–{patch.AndroidMax}]";
-                return result;
-            }
-
-            var targets = GlobFiles(patch.FileGlob);
-            bool anyFile = false;
-
-            foreach (var file in targets)
-            {
-                anyFile = true;
-                var text = File.ReadAllText(file);
-                string patched;
-                int count = 0;
-
-                if (patch.Multi)
-                {
-                    patched = Regex.Replace(text, patch.Search, patch.Replace,
-                        RegexOptions.Multiline | RegexOptions.Singleline);
-                    // estimate count
-                    count = Regex.Matches(text, patch.Search,
-                        RegexOptions.Multiline | RegexOptions.Singleline).Count;
-                }
-                else
-                {
-                    patched = Regex.Replace(text, patch.Search, patch.Replace,
-                        RegexOptions.Multiline | RegexOptions.Singleline, TimeSpan.FromSeconds(10));
-                    count = patched != text ? 1 : 0;
-                }
-
-                if (patched != text)
-                {
-                    File.WriteAllText(file, patched);
-                    result.Files.Add($"{Path.GetFileName(file)} ({count}×)");
-                    result.Applied = true;
-                }
-            }
-
-            if (!anyFile)
-                result.Reason = $"No file matched: {patch.FileGlob}";
-            else if (!result.Applied)
-                result.Reason = "Pattern not found in matched file(s)";
-
-            return result;
+            patched = Regex.Replace(text, patch.Search, patch.Replace, options, TimeSpan.FromSeconds(10));
+        }
+        else
+        {
+            var rx = new Regex(patch.Search, options, TimeSpan.FromSeconds(10));
+            patched = rx.Replace(text, patch.Replace, 1);
+            count = 1;
         }
 
-        public Dictionary<string, PatchResult> RunAll(IEnumerable<string> names)
+        if (patched != text)
         {
-            var results = new Dictionary<string, PatchResult>();
+            File.WriteAllText(file, patched);
+            var relative = Path.GetRelativePath(_smaliRoot, file).Replace('\\', '/');
+            result.Files.Add($"{relative} ({count}×)");
+            result.Applied = true;
+        }
+    }
+
+    if (!result.Applied)
+        result.Reason = "Pattern not found in matched file(s)";
+
+    return result;
+}
+
+        public Dictionary<string, PatchResult> RunAll(IEnumerable<string> names)
+{
+    var results = new Dictionary<string, PatchResult>(StringComparer.OrdinalIgnoreCase);
             foreach (var name in names)
             {
                 if (!PatchDefinitions.Map.TryGetValue(name, out var patch))
