@@ -19,20 +19,21 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - name: Download baksmali/smali 3.0.9 fat JARs
+      - name: Download smali/baksmali 3.0.9 fat JARs
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
 
           New-Item -ItemType Directory -Force -Path tools | Out-Null
 
-          # Use the exact URLs copied from the v3.0.9 release page
-          $bak = "https://github.com/baksmali/smali/releases/download/v3.0.9/baksmali-3.0.9-fat.jar"
-          $sma = "https://github.com/baksmali/smali/releases/download/v3.0.9/smali-3.0.9-fat.jar"
+          # Direct fat-jar URLs from JesusFreke/smali v3.0.9 release
+          $bak = "https://github.com/JesusFreke/smali/releases/download/v3.0.9/baksmali-3.0.9-fat.jar"
+          $sma = "https://github.com/JesusFreke/smali/releases/download/v3.0.9/smali-3.0.9-fat.jar"
 
           Invoke-WebRequest -Uri $bak -OutFile tools/baksmali.jar -UseBasicParsing -ErrorAction Stop
           Invoke-WebRequest -Uri $sma -OutFile tools/smali.jar   -UseBasicParsing -ErrorAction Stop
 
+          # Sanity checks so we don't silently save HTML/404 pages
           if (-not (Test-Path tools/baksmali.jar) -or (Get-Item tools/baksmali.jar).Length -lt 100000) {
             throw "baksmali.jar looks wrong or is too small"
           }
@@ -43,5 +44,5 @@ jobs:
           Write-Host "baksmali: $((Get-Item tools/baksmali.jar).Length) bytes"
           Write-Host "smali:    $((Get-Item tools/smali.jar).Length) bytes"
 
-      - name: Build
+      - name: Build (Release)
         run: dotnet build --configuration Release
