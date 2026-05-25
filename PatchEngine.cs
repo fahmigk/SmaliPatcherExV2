@@ -33,16 +33,14 @@ namespace SmaliPatcherEx
             // ── MOCK LOCATION ──────────────────────────────────────────────────────
             // Android 13–16: addTestProvider uses AppOpsHelper.noteOp(...)Z.
             new SmaliPatch
-            {
-                Name        = "mock_location_appops",
-                Description = "Mock Location — bypass addTestProvider AppOps noteOp gate (Android 13–16)",
-                FileGlob    = "location/LocationManagerService.smali",
-                Search      = @"(invoke-virtual \{[vp]\d+, [vp]\d+\}, Lcom/android/server/location/injector/AppOpsHelper;->noteOp\(ILandroid/location/util/identity/CallerIdentity;\)Z\s*\n\s*move-result ([vp]\d+)\s*\n\s*if-nez \2, :cond_[A-Za-z0-9_]+\s*\n\s*return-void)",
-                // Replace the whole check + early return with a constant true
-                Replace     = @"    const/4 v0, 0x1
-",
-                AndroidMin  = 13,
-            },
+{
+    Name        = "mock_location_appops",
+    Description = "Mock Location — invert noteOp gate (Android 13–16)",
+    FileGlob    = "location/LocationManagerService.smali",
+    Search      = @"(move-result p5\s*\n\s*)if-nez p5, (:cond_13)",
+    Replace     = "$1if-eqz p5, $2",
+    AndroidMin  = 13,
+}
 
             // AppOpsHelper noteOp itself – force allow.
             new SmaliPatch
