@@ -27,8 +27,8 @@ jobs:
           New-Item -ItemType Directory -Force -Path tools | Out-Null
 
           # Direct fat-jar URLs from JesusFreke/smali v3.0.9 release
-          $bak = "https://github.com/JesusFreke/smali/releases/download/v3.0.9/baksmali-3.0.9-fat.jar"
-          $sma = "https://github.com/JesusFreke/smali/releases/download/v3.0.9/smali-3.0.9-fat.jar"
+          $bak = "https://github.com/baksmali/smali/releases/download/3.0.9/baksmali-3.0.9-fat.jar"
+          $sma = "https://github.com/baksmali/smali/releases/download/3.0.9/smali-3.0.9-fat.jar"
 
           Invoke-WebRequest -Uri $bak -OutFile tools/baksmali.jar -UseBasicParsing -ErrorAction Stop
           Invoke-WebRequest -Uri $sma -OutFile tools/smali.jar   -UseBasicParsing -ErrorAction Stop
