@@ -1,53 +1,134 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
-using System.Text.RegularExpressions;
 
-public static class SmaliHelper
+namespace SmaliPatcherExV2
 {
-    public static string? FindLocationProviderManager(string root)
+    public class SmaliPatch
     {
-        if (!Directory.Exists(root)) return null;
-
-        return Directory
-            .EnumerateFiles(root, "LocationProviderManager.smali", SearchOption.AllDirectories)
-            .FirstOrDefault(f =>
-                f.Replace('\\', '/').Contains("/com/android/server/location/provider/"));
+        public string Name { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string FileGlob { get; set; } = "";
+        public string Search { get; set; } = "";
+        public string Replace { get; set; } = "";
+        public bool EnabledByDefault { get; set; } = true;
     }
 
-    public static string? GetMethodBlock(string smaliPath, string methodName)
+    public static class PatchDefinitions
     {
-        if (!File.Exists(smaliPath)) return null;
-
-        var text = File.ReadAllText(smaliPath, Encoding.UTF8);
-        var pattern = @$"(?ms)^\.method\b[^\n]*\b{Regex.Escape(methodName)}\b[^\n]*\n.*?^\.end method\s*$";
-        var match = Regex.Match(text, pattern, RegexOptions.Multiline);
-        return match.Success ? match.Value : null;
-    }
-
-    public static void Main(string[] args)
-    {
-        var root = args.Length > 0 ? args[0] : Directory.GetCurrentDirectory();
-        var file = FindLocationProviderManager(root);
-
-        if (file == null)
+        public static readonly List<SmaliPatch> All = new()
         {
-            Console.WriteLine("LocationProviderManager.smali not found.");
-            return;
+            new SmaliPatch
+            {
+                Name = "Template Patch",
+                Description = "Example patch entry. Replace with your real patch definitions.",
+                FileGlob = "LocationProviderManager.smali",
+                Search = "",
+                Replace = "",
+                EnabledByDefault = false
+            }
+        };
+    }
+
+    public class PatchResult
+    {
+        public string PatchName { get; set; } = "";
+        public string FilePath { get; set; } = "";
+        public bool Applied { get; set; }
+        public string Message { get; set; } = "";
+    }
+
+    public static class PatchEngine
+    {
+        public static List<string> FindCandidateFiles(string rootPath, string fileGlob)
+        {
+            if (string.IsNullOrWhiteSpace(rootPath) || !Directory.Exists(rootPath))
+                return new List<string>();
+
+            if (string.IsNullOrWhiteSpace(fileGlob))
+                return new List<string>();
+
+            string normalized = fileGlob.Replace('\\', '/').Trim();
+
+            if (normalized.Contains('/'))
+            {
+                string fileName = Path.GetFileName(normalized);
+                string partialDir = normalized.Substring(0, normalized.Length - fileName.Length).Trim('/');
+
+                return Directory.EnumerateFiles(rootPath, fileName, SearchOption.AllDirectories)
+                    .Where(f => f.Replace('\\', '/').Contains(partialDir, StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+
+            return Directory.EnumerateFiles(rootPath, normalized, SearchOption.AllDirectories)
+                .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
-        Console.WriteLine("Found:");
-        Console.WriteLine(file);
-        Console.WriteLine();
+        public static PatchResult ApplyPatch(string rootPath, SmaliPatch patch)
+        {
+            var result = new PatchResult
+            {
+                PatchName = patch?.Name ?? "",
+                Applied = false
+            };
 
-        var m1 = GetMethodBlock(file, "setMockProviderAllowed");
-        var m2 = GetMethodBlock(file, "setMockProviderLocation");
+            if (patch == null)
+            {
+                result.Message = "Patch is null.";
+                return result;
+            }
 
-        Console.WriteLine("=== setMockProviderAllowed ===");
-        Console.WriteLine(m1 ?? "Method not found");
-        Console.WriteLine();
-        Console.WriteLine("=== setMockProviderLocation ===");
-        Console.WriteLine(m2 ?? "Method not found");
+            var files = FindCandidateFiles(rootPath, patch.FileGlob);
+            if (files.Count == 0)
+            {
+                result.Message = $"No file matched: {patch.FileGlob}";
+                return result;
+            }
+
+            foreach (var file in files)
+            {
+                var text = File.ReadAllText(file);
+
+                if (string.IsNullOrEmpty(patch.Search))
+                {
+                    result.FilePath = file;
+                    result.Message = "Search text is empty.";
+                    return result;
+                }
+
+                if (!text.Contains(patch.Search, StringComparison.Ordinal))
+                    continue;
+
+                var updated = text.Replace(patch.Search, patch.Replace ?? "", StringComparison.Ordinal);
+
+                if (updated == text)
+                    continue;
+
+                File.WriteAllText(file, updated);
+                result.FilePath = file;
+                result.Applied = true;
+                result.Message = "Patch applied.";
+                return result;
+            }
+
+            result.Message = "Search pattern not found in any matched file.";
+            return result;
+        }
+
+        public static List<PatchResult> ApplyPatches(string rootPath, IEnumerable<SmaliPatch> patches)
+        {
+            var results = new List<PatchResult>();
+
+            if (patches == null)
+                return results;
+
+            foreach (var patch in patches)
+                results.Add(ApplyPatch(rootPath, patch));
+
+            return results;
+        }
     }
 }
