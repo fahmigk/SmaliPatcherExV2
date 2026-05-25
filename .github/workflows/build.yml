@@ -1,15 +1,13 @@
-name: Build SmaliPatcherExV2
+name: Build SmaliPatcherEx Windows EXE
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches: [ main, master ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: windows-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -17,37 +15,43 @@ jobs:
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: '8.0.x'
 
-      - name: Download smali/baksmali 3.0.9 fat JARs
+      - name: Download fat JARs (no v prefix in tag)
         shell: pwsh
         run: |
-          $ErrorActionPreference = "Stop"
-
           New-Item -ItemType Directory -Force -Path tools | Out-Null
-
-          # Direct fat-jar URLs from JesusFreke/smali v3.0.9 release
           $bak = "https://github.com/baksmali/smali/releases/download/3.0.9/baksmali-3.0.9-fat.jar"
           $sma = "https://github.com/baksmali/smali/releases/download/3.0.9/smali-3.0.9-fat.jar"
-
-          Invoke-WebRequest -Uri $bak -OutFile tools/baksmali.jar -UseBasicParsing -ErrorAction Stop
-          Invoke-WebRequest -Uri $sma -OutFile tools/smali.jar   -UseBasicParsing -ErrorAction Stop
-
-          if (-not (Test-Path tools/baksmali.jar) -or (Get-Item tools/baksmali.jar).Length -lt 100000) {
-            throw "baksmali.jar looks wrong or is too small"
-          }
-          if (-not (Test-Path tools/smali.jar) -or (Get-Item tools/smali.jar).Length -lt 100000) {
-            throw "smali.jar looks wrong or is too small"
-          }
-
+          Invoke-WebRequest -Uri $bak -OutFile tools/baksmali.jar -UseBasicParsing
+          Invoke-WebRequest -Uri $sma -OutFile tools/smali.jar -UseBasicParsing
           Write-Host "baksmali: $((Get-Item tools/baksmali.jar).Length) bytes"
           Write-Host "smali:    $((Get-Item tools/smali.jar).Length) bytes"
 
-      - name: Publish Windows build
-        run: dotnet publish -c Release -r win-x64 --self-contained false -o publish
+      - name: Restore
+        run: dotnet restore SmaliPatcherEx.csproj
 
-      - name: Upload EXE artifact
+      - name: Build EXE
+        run: |
+          dotnet publish SmaliPatcherEx.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            --output ./publish
+
+      - name: Copy JARs next to EXE
+        shell: pwsh
+        run: |
+          Copy-Item tools/baksmali.jar publish/baksmali.jar
+          Copy-Item tools/smali.jar    publish/smali.jar
+          Get-ChildItem publish/
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SmaliPatcherExV2-win
-          path: publish/*.exe
+          name: SmaliPatcherEx-Windows-x64
+          path: publish/
+          retention-days: 90
