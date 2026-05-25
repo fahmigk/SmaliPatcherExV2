@@ -1,23 +1,47 @@
-- name: Download baksmali/smali 3.0.9 fat JARs
-  shell: pwsh
-  run: |
-    $ErrorActionPreference = "Stop"
+name: Build SmaliPatcherExV2
 
-    New-Item -ItemType Directory -Force -Path tools | Out-Null
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
-    # PASTE the exact URLs you copied from the release page here:
-    $bak = "https://github.com/baksmali/smali/releases/download/v3.0.9/baksmali-3.0.9-fat.jar"
-    $sma = "https://github.com/baksmali/smali/releases/download/v3.0.9/smali-3.0.9-fat.jar"
+jobs:
+  build:
+    runs-on: windows-latest
 
-    Invoke-WebRequest -Uri $bak -OutFile tools/baksmali.jar -UseBasicParsing -ErrorAction Stop
-    Invoke-WebRequest -Uri $sma -OutFile tools/smali.jar   -UseBasicParsing -ErrorAction Stop
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    if (-not (Test-Path tools/baksmali.jar) -or (Get-Item tools/baksmali.jar).Length -lt 100000) {
-      throw "baksmali.jar looks wrong or is too small"
-    }
-    if (-not (Test-Path tools/smali.jar) -or (Get-Item tools/smali.jar).Length -lt 100000) {
-      throw "smali.jar looks wrong or is too small"
-    }
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
 
-    Write-Host "baksmali: $((Get-Item tools/baksmali.jar).Length) bytes"
-    Write-Host "smali:    $((Get-Item tools/smali.jar).Length) bytes"
+      - name: Download baksmali/smali 3.0.9 fat JARs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          New-Item -ItemType Directory -Force -Path tools | Out-Null
+
+          # Use the exact URLs copied from the v3.0.9 release page
+          $bak = "https://github.com/baksmali/smali/releases/download/v3.0.9/baksmali-3.0.9-fat.jar"
+          $sma = "https://github.com/baksmali/smali/releases/download/v3.0.9/smali-3.0.9-fat.jar"
+
+          Invoke-WebRequest -Uri $bak -OutFile tools/baksmali.jar -UseBasicParsing -ErrorAction Stop
+          Invoke-WebRequest -Uri $sma -OutFile tools/smali.jar   -UseBasicParsing -ErrorAction Stop
+
+          if (-not (Test-Path tools/baksmali.jar) -or (Get-Item tools/baksmali.jar).Length -lt 100000) {
+            throw "baksmali.jar looks wrong or is too small"
+          }
+          if (-not (Test-Path tools/smali.jar) -or (Get-Item tools/smali.jar).Length -lt 100000) {
+            throw "smali.jar looks wrong or is too small"
+          }
+
+          Write-Host "baksmali: $((Get-Item tools/baksmali.jar).Length) bytes"
+          Write-Host "smali:    $((Get-Item tools/smali.jar).Length) bytes"
+
+      - name: Build
+        run: dotnet build --configuration Release
