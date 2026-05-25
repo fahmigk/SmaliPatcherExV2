@@ -13,602 +13,351 @@ namespace SmaliPatcherEx
 {
     public partial class MainForm : Form
     {
-        // ── constants ────────────────────────────────────────────────────────
         private const string BAKSMALI_URL = "https://github.com/JesusFreke/smali/releases/download/v3.0.9/baksmali-3.0.9.jar";
         private const string SMALI_URL    = "https://github.com/JesusFreke/smali/releases/download/v3.0.9/smali-3.0.9.jar";
-        private static readonly string ToolDir    = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".smali_patcher_ex");
+        private static readonly string ToolDir     = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".smali_patcher_ex");
         private static readonly string BaksmaliJar = Path.Combine(ToolDir, "baksmali.jar");
         private static readonly string SmaliJar    = Path.Combine(ToolDir, "smali.jar");
 
-        // ── state ─────────────────────────────────────────────────────────────
-        private string?  _servicesJarPath;
-        private string   _outputDir   = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "SmaliPatcherEx_Output");
-        private int      _apiLevel    = 36;
-        private string   _fingerprint = "";
-        private string   _workDir     = "";
-        private bool     _busy        = false;
+        private string? _servicesJarPath;
+        private string  _outputDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "SmaliPatcherEx_Output");
+        private int     _apiLevel  = 36;
+        private string  _fingerprint = "";
 
-        // ── controls ──────────────────────────────────────────────────────────
-        private Panel        _topPanel    = null!;
-        private Panel        _midPanel    = null!;
-        private Panel        _logPanel    = null!;
-        private Label        _titleLabel  = null!;
-        private Label        _subtitleLbl = null!;
-        private Button       _jarBtn      = null!;
-        private Label        _jarLabel    = null!;
-        private NumericUpDown _apiBox     = null!;
-        private TextBox      _fpBox       = null!;
-        private TextBox      _outBox      = null!;
-        private Button       _outBtn      = null!;
+        private Label        _jarLabel  = null!;
+        private NumericUpDown _apiBox   = null!;
+        private TextBox      _fpBox     = null!;
+        private TextBox      _outBox    = null!;
         private FlowLayoutPanel _patchFlow = null!;
-        private Button       _patchBtn    = null!;
-        private Button       _selectAll   = null!;
-        private Button       _clearAll    = null!;
-        private RichTextBox  _logBox      = null!;
-        private ProgressBar  _progress    = null!;
-        private StatusStrip  _status      = null!;
-        private ToolStripStatusLabel _statusLabel = null!;
+        private Button       _patchBtn  = null!;
+        private RichTextBox  _logBox    = null!;
+        private ProgressBar  _progress  = null!;
 
         private readonly Dictionary<string, CheckBox> _checkBoxes = new();
 
-        // ─────────────────────────────────────────────────────────────────────
         public MainForm()
         {
             InitializeComponent();
             BuildUI();
             PopulatePatches();
-            Log("SmaliPatcherEx v2.0  —  Android 16 (API 36) Ready");
-            Log("Select services.jar, choose patches, click Patch.");
+            Log("SmaliPatcherEx v2.0  —  Android 16 Ready");
+            Log($"Tool directory: {ToolDir}");
         }
 
-        // ── UI BUILD ─────────────────────────────────────────────────────────
         private void BuildUI()
         {
-            Text            = "SmaliPatcherEx  v2.0  [Android 16 / API 36]";
-            Size            = new System.Drawing.Size(860, 780);
-            MinimumSize     = new System.Drawing.Size(760, 680);
-            StartPosition   = FormStartPosition.CenterScreen;
-            BackColor       = System.Drawing.Color.FromArgb(28, 28, 36);
-            ForeColor       = System.Drawing.Color.WhiteSmoke;
-            Font            = new System.Drawing.Font("Segoe UI", 9f);
+            Text          = "SmaliPatcherEx v2.0  [Android 16 / API 36]";
+            Size          = new System.Drawing.Size(900, 800);
+            MinimumSize   = new System.Drawing.Size(800, 700);
+            StartPosition = FormStartPosition.CenterScreen;
+            BackColor     = System.Drawing.Color.FromArgb(24, 24, 32);
+            ForeColor     = System.Drawing.Color.WhiteSmoke;
+            Font          = new System.Drawing.Font("Segoe UI", 9f);
 
-            // ── STATUS STRIP ─────────────────────────────────────────
-            _status      = new StatusStrip { BackColor = System.Drawing.Color.FromArgb(20,20,28) };
-            _statusLabel = new ToolStripStatusLabel("Ready")
-                           { ForeColor = System.Drawing.Color.LightGreen };
-            _status.Items.Add(_statusLabel);
-            Controls.Add(_status);
-
-            // ── TOP PANEL (title + jar select) ───────────────────────
-            _topPanel = new Panel
+            var main = new TableLayoutPanel
             {
-                Dock      = DockStyle.Top,
-                Height    = 120,
-                Padding   = new Padding(12, 10, 12, 0),
-                BackColor = System.Drawing.Color.FromArgb(34, 34, 48),
+                Dock        = DockStyle.Fill,
+                RowCount    = 2,
+                ColumnCount = 1,
+                BackColor   = System.Drawing.Color.Transparent,
             };
+            main.RowStyles.Add(new RowStyle(SizeType.Absolute, 420));
+            main.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            Controls.Add(main);
 
-            _titleLabel = MkLabel("SmaliPatcherEx", 18, bold: true);
-            _titleLabel.ForeColor = System.Drawing.Color.FromArgb(100, 210, 255);
-            _titleLabel.Location  = new System.Drawing.Point(12, 10);
+            // ── TOP SECTION ──────────────────────────────────────────
+            var top = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10), BackColor = System.Drawing.Color.FromArgb(30,30,44) };
+            main.Controls.Add(top, 0, 0);
 
-            _subtitleLbl = MkLabel("Android 16 (API 36) Compatible  —  sabpprook rebuild", 9);
-            _subtitleLbl.ForeColor = System.Drawing.Color.Gray;
-            _subtitleLbl.Location  = new System.Drawing.Point(14, 38);
+            int y = 10;
 
-            _jarBtn = MkButton("Select services.jar", 140, 28);
-            _jarBtn.Location = new System.Drawing.Point(12, 68);
-            _jarBtn.Click   += JarBtn_Click;
+            // Title
+            var title = new Label { Text = "SmaliPatcherEx v2.0", Font = new System.Drawing.Font("Segoe UI", 16, System.Drawing.FontStyle.Bold), ForeColor = System.Drawing.Color.FromArgb(80,200,255), AutoSize = true, Location = new System.Drawing.Point(10, y) };
+            top.Controls.Add(title);
+            y += 38;
 
-            _jarLabel = MkLabel("No file selected", 9);
-            _jarLabel.ForeColor = System.Drawing.Color.Gray;
-            _jarLabel.AutoSize  = false;
-            _jarLabel.Size      = new System.Drawing.Size(650, 22);
-            _jarLabel.Location  = new System.Drawing.Point(164, 73);
+            // Jar select
+            var jarBtn = new Button { Text = "Select services.jar", Size = new System.Drawing.Size(150, 28), Location = new System.Drawing.Point(10, y), BackColor = System.Drawing.Color.FromArgb(55,55,80), ForeColor = System.Drawing.Color.White, FlatStyle = FlatStyle.Flat };
+            jarBtn.Click += JarBtn_Click;
+            _jarLabel = new Label { Text = "No file selected", ForeColor = System.Drawing.Color.Gray, AutoSize = false, Size = new System.Drawing.Size(680, 28), Location = new System.Drawing.Point(170, y+4) };
+            top.Controls.Add(jarBtn);
+            top.Controls.Add(_jarLabel);
+            y += 38;
 
-            _topPanel.Controls.AddRange(new Control[]
-                { _titleLabel, _subtitleLbl, _jarBtn, _jarLabel });
-            Controls.Add(_topPanel);
-
-            // ── MID PANEL (settings + patches) ───────────────────────
-            _midPanel = new Panel
-            {
-                Dock      = DockStyle.Top,
-                Height    = 360,
-                Padding   = new Padding(12, 8, 12, 0),
-                BackColor = System.Drawing.Color.FromArgb(30, 30, 44),
-            };
-
-            // API level
-            var apiLbl = MkLabel("API Level:", 9);
-            apiLbl.Location = new System.Drawing.Point(12, 12);
-            _apiBox = new NumericUpDown
-            {
-                Location   = new System.Drawing.Point(84, 8),
-                Size       = new System.Drawing.Size(60, 24),
-                Minimum    = 21,
-                Maximum    = 99,
-                Value      = _apiLevel,
-                BackColor  = System.Drawing.Color.FromArgb(42, 42, 60),
-                ForeColor  = System.Drawing.Color.WhiteSmoke,
-            };
+            // API
+            var apiLbl = new Label { Text = "API Level:", AutoSize = true, Location = new System.Drawing.Point(10, y+4) };
+            _apiBox = new NumericUpDown { Location = new System.Drawing.Point(90, y), Size = new System.Drawing.Size(65, 26), Minimum = 21, Maximum = 99, Value = 36, BackColor = System.Drawing.Color.FromArgb(42,42,60), ForeColor = System.Drawing.Color.White };
             _apiBox.ValueChanged += (s, e) => _apiLevel = (int)_apiBox.Value;
 
-            // Fingerprint
-            var fpLbl = MkLabel("Fingerprint (optional):", 9);
-            fpLbl.Location = new System.Drawing.Point(160, 12);
-            _fpBox = new TextBox
-            {
-                Location    = new System.Drawing.Point(310, 8),
-                Size        = new System.Drawing.Size(400, 24),
-                PlaceholderText = "leave blank to skip fingerprint check in module",
-                BackColor   = System.Drawing.Color.FromArgb(42, 42, 60),
-                ForeColor   = System.Drawing.Color.WhiteSmoke,
-            };
+            var fpLbl = new Label { Text = "Fingerprint (optional):", AutoSize = true, Location = new System.Drawing.Point(170, y+4) };
+            _fpBox = new TextBox { Location = new System.Drawing.Point(320, y), Size = new System.Drawing.Size(520, 26), PlaceholderText = "leave blank to skip", BackColor = System.Drawing.Color.FromArgb(42,42,60), ForeColor = System.Drawing.Color.White };
             _fpBox.TextChanged += (s, e) => _fingerprint = _fpBox.Text;
+            top.Controls.AddRange(new Control[]{ apiLbl, _apiBox, fpLbl, _fpBox });
+            y += 36;
 
-            // Output dir
-            var outLbl = MkLabel("Output:", 9);
-            outLbl.Location = new System.Drawing.Point(12, 42);
-            _outBox = new TextBox
-            {
-                Location  = new System.Drawing.Point(84, 38),
-                Size      = new System.Drawing.Size(590, 24),
-                Text      = _outputDir,
-                BackColor = System.Drawing.Color.FromArgb(42, 42, 60),
-                ForeColor = System.Drawing.Color.WhiteSmoke,
-            };
+            // Output
+            var outLbl = new Label { Text = "Output:", AutoSize = true, Location = new System.Drawing.Point(10, y+4) };
+            _outBox = new TextBox { Location = new System.Drawing.Point(90, y), Size = new System.Drawing.Size(700, 26), Text = _outputDir, BackColor = System.Drawing.Color.FromArgb(42,42,60), ForeColor = System.Drawing.Color.White };
             _outBox.TextChanged += (s, e) => _outputDir = _outBox.Text;
+            var outBtn = new Button { Text = "…", Size = new System.Drawing.Size(36, 26), Location = new System.Drawing.Point(798, y), BackColor = System.Drawing.Color.FromArgb(55,55,80), ForeColor = System.Drawing.Color.White, FlatStyle = FlatStyle.Flat };
+            outBtn.Click += (s,e) => { using var d = new FolderBrowserDialog(); if(d.ShowDialog()==DialogResult.OK){_outputDir=d.SelectedPath;_outBox.Text=_outputDir;} };
+            top.Controls.AddRange(new Control[]{ outLbl, _outBox, outBtn });
+            y += 36;
 
-            _outBtn = MkButton("…", 36, 24);
-            _outBtn.Location = new System.Drawing.Point(682, 38);
-            _outBtn.Click   += OutBtn_Click;
+            // Patches header
+            var pLbl = new Label { Text = "Smali Patches:", Font = new System.Drawing.Font("Segoe UI", 9, System.Drawing.FontStyle.Bold), ForeColor = System.Drawing.Color.FromArgb(80,200,255), AutoSize = true, Location = new System.Drawing.Point(10, y+3) };
+            var allBtn = new Button { Text = "All", Size = new System.Drawing.Size(50,24), Location = new System.Drawing.Point(130, y), BackColor = System.Drawing.Color.FromArgb(55,55,80), ForeColor = System.Drawing.Color.White, FlatStyle = FlatStyle.Flat };
+            allBtn.Click += (s,e) => { foreach(var c in _checkBoxes.Values) c.Checked=true; };
+            var noneBtn = new Button { Text = "None", Size = new System.Drawing.Size(55,24), Location = new System.Drawing.Point(188, y), BackColor = System.Drawing.Color.FromArgb(55,55,80), ForeColor = System.Drawing.Color.White, FlatStyle = FlatStyle.Flat };
+            noneBtn.Click += (s,e) => { foreach(var c in _checkBoxes.Values) c.Checked=false; };
+            top.Controls.AddRange(new Control[]{ pLbl, allBtn, noneBtn });
+            y += 32;
 
-            // Patches label + select/clear buttons
-            var patchLbl = MkLabel("Smali Patches:", 9, bold: true);
-            patchLbl.ForeColor = System.Drawing.Color.FromArgb(100, 210, 255);
-            patchLbl.Location  = new System.Drawing.Point(12, 74);
-
-            _selectAll = MkButton("All", 50, 22);
-            _selectAll.Location = new System.Drawing.Point(120, 72);
-            _selectAll.Click   += (s, e) => SetAllChecked(true);
-
-            _clearAll = MkButton("None", 50, 22);
-            _clearAll.Location = new System.Drawing.Point(178, 72);
-            _clearAll.Click   += (s, e) => SetAllChecked(false);
-
-            // Patch checkbox panel
-            _patchFlow = new FlowLayoutPanel
-            {
-                Location       = new System.Drawing.Point(12, 100),
-                Size           = new System.Drawing.Size(820, 240),
-                FlowDirection  = FlowDirection.TopDown,
-                WrapContents   = true,
-                AutoScroll     = true,
-                BackColor      = System.Drawing.Color.FromArgb(26, 26, 40),
-                Padding        = new Padding(6),
-            };
+            // Patch list
+            _patchFlow = new FlowLayoutPanel { Location = new System.Drawing.Point(10, y), Size = new System.Drawing.Size(860, 180), FlowDirection = FlowDirection.TopDown, WrapContents = true, AutoScroll = true, BackColor = System.Drawing.Color.FromArgb(20,20,34), Padding = new Padding(4) };
+            top.Controls.Add(_patchFlow);
+            y += 188;
 
             // Patch button
-            _patchBtn = MkButton("▶  Patch & Build Module", 200, 36);
-            _patchBtn.Location  = new System.Drawing.Point(12, 348);
-            _patchBtn.Font      = new System.Drawing.Font("Segoe UI", 10f, System.Drawing.FontStyle.Bold);
-            _patchBtn.BackColor = System.Drawing.Color.FromArgb(0, 140, 255);
+            _patchBtn = new Button { Text = "▶  Patch & Build Module", Size = new System.Drawing.Size(220, 40), Location = new System.Drawing.Point(10, y), BackColor = System.Drawing.Color.FromArgb(0,130,255), ForeColor = System.Drawing.Color.White, FlatStyle = FlatStyle.Flat, Font = new System.Drawing.Font("Segoe UI", 10, System.Drawing.FontStyle.Bold), Cursor = Cursors.Hand };
             _patchBtn.FlatAppearance.BorderSize = 0;
-            _patchBtn.Click    += PatchBtn_Click;
+            _patchBtn.Click += PatchBtn_Click;
+            top.Controls.Add(_patchBtn);
 
-            _midPanel.Controls.AddRange(new Control[]
-            {
-                apiLbl, _apiBox, fpLbl, _fpBox,
-                outLbl, _outBox, _outBtn,
-                patchLbl, _selectAll, _clearAll,
-                _patchFlow, _patchBtn,
-            });
-            Controls.Add(_midPanel);
+            // ── BOTTOM LOG ───────────────────────────────────────────
+            var bottom = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10,4,10,10), BackColor = System.Drawing.Color.FromArgb(14,14,22) };
+            main.Controls.Add(bottom, 0, 1);
 
-            // ── LOG PANEL ────────────────────────────────────────────
-            _logPanel = new Panel
-            {
-                Dock      = DockStyle.Fill,
-                Padding   = new Padding(12, 8, 12, 8),
-                BackColor = System.Drawing.Color.FromArgb(18, 18, 26),
-            };
-
-            _progress = new ProgressBar
-            {
-                Dock   = DockStyle.Top,
-                Height = 6,
-                Style  = ProgressBarStyle.Marquee,
-                Visible = false,
-            };
-
-            _logBox = new RichTextBox
-            {
-                Dock      = DockStyle.Fill,
-                BackColor = System.Drawing.Color.FromArgb(14, 14, 22),
-                ForeColor = System.Drawing.Color.LightGreen,
-                Font      = new System.Drawing.Font("Consolas", 8.5f),
-                ReadOnly  = true,
-                ScrollBars= RichTextBoxScrollBars.Vertical,
-                BorderStyle = BorderStyle.None,
-            };
-
-            _logPanel.Controls.Add(_logBox);
-            _logPanel.Controls.Add(_progress);
-            Controls.Add(_logPanel);
+            _progress = new ProgressBar { Dock = DockStyle.Top, Height = 6, Style = ProgressBarStyle.Marquee, Visible = false };
+            _logBox = new RichTextBox { Dock = DockStyle.Fill, BackColor = System.Drawing.Color.FromArgb(10,10,18), ForeColor = System.Drawing.Color.LightGreen, Font = new System.Drawing.Font("Consolas", 9f), ReadOnly = true, BorderStyle = BorderStyle.None, ScrollBars = RichTextBoxScrollBars.Vertical };
+            bottom.Controls.Add(_logBox);
+            bottom.Controls.Add(_progress);
         }
 
         private void PopulatePatches()
         {
             _patchFlow.Controls.Clear();
             _checkBoxes.Clear();
-
-            foreach (var patch in PatchDefinitions.All)
+            foreach (var p in PatchDefinitions.All)
             {
-                var cb = new CheckBox
-                {
-                    Text      = $"{patch.Name}  —  {patch.Description}",
-                    Checked   = true,
-                    AutoSize  = false,
-                    Width     = 780,
-                    Height    = 22,
-                    ForeColor = System.Drawing.Color.WhiteSmoke,
-                    BackColor = System.Drawing.Color.Transparent,
-                };
-                var tip = new ToolTip();
-                tip.SetToolTip(cb,
-                    $"{patch.Description}\n" +
-                    $"Target: {patch.FileGlob}\n" +
-                    $"Android: A{patch.AndroidMin}–{(patch.AndroidMax < 99 ? "A"+patch.AndroidMax : "latest")}");
-
-                _checkBoxes[patch.Name] = cb;
+                var cb = new CheckBox { Text = $"{p.Name}  —  {p.Description}", Checked = true, AutoSize = false, Width = 840, Height = 22, ForeColor = System.Drawing.Color.WhiteSmoke, BackColor = System.Drawing.Color.Transparent };
+                _checkBoxes[p.Name] = cb;
                 _patchFlow.Controls.Add(cb);
             }
         }
 
-        // ── HELPERS ──────────────────────────────────────────────────────────
-        private static Label MkLabel(string text, float size, bool bold = false)
-        {
-            return new Label
-            {
-                Text      = text,
-                AutoSize  = true,
-                Font      = new System.Drawing.Font("Segoe UI", size,
-                                bold ? System.Drawing.FontStyle.Bold
-                                     : System.Drawing.FontStyle.Regular),
-                ForeColor = System.Drawing.Color.WhiteSmoke,
-            };
-        }
-
-        private static Button MkButton(string text, int w, int h)
-        {
-            return new Button
-            {
-                Text      = text,
-                Size      = new System.Drawing.Size(w, h),
-                BackColor = System.Drawing.Color.FromArgb(55, 55, 80),
-                ForeColor = System.Drawing.Color.WhiteSmoke,
-                FlatStyle = FlatStyle.Flat,
-                Cursor    = Cursors.Hand,
-            };
-        }
-
-        private void SetAllChecked(bool value)
-        {
-            foreach (var cb in _checkBoxes.Values) cb.Checked = value;
-        }
-
-        private void SetBusy(bool busy)
-        {
-            _busy            = busy;
-            _patchBtn.Enabled  = !busy;
-            _jarBtn.Enabled    = !busy;
-            _progress.Visible  = busy;
-            _statusLabel.Text  = busy ? "Working…" : "Ready";
-        }
-
-        // ── EVENT HANDLERS ───────────────────────────────────────────────────
         private void JarBtn_Click(object? sender, EventArgs e)
         {
-            using var dlg = new OpenFileDialog
+            using var d = new OpenFileDialog { Title = "Select services.jar", Filter = "JAR files (*.jar)|*.jar|All files (*.*)|*.*" };
+            if (d.ShowDialog() == DialogResult.OK)
             {
-                Title  = "Select services.jar",
-                Filter = "JAR files (*.jar)|*.jar|All files (*.*)|*.*",
-            };
-            if (dlg.ShowDialog() == DialogResult.OK)
-            {
-                _servicesJarPath = dlg.FileName;
-                _jarLabel.Text   = _servicesJarPath;
+                _servicesJarPath = d.FileName;
+                _jarLabel.Text = _servicesJarPath;
                 _jarLabel.ForeColor = System.Drawing.Color.LightGreen;
                 Log($"[+] Selected: {_servicesJarPath}");
             }
         }
 
-        private void OutBtn_Click(object? sender, EventArgs e)
-        {
-            using var dlg = new FolderBrowserDialog
-            {
-                Description          = "Select output folder",
-                UseDescriptionForTitle = true,
-            };
-            if (dlg.ShowDialog() == DialogResult.OK)
-            {
-                _outputDir  = dlg.SelectedPath;
-                _outBox.Text = _outputDir;
-            }
-        }
-
         private async void PatchBtn_Click(object? sender, EventArgs e)
         {
-            if (_busy) return;
-
             if (string.IsNullOrEmpty(_servicesJarPath) || !File.Exists(_servicesJarPath))
-            {
-                MessageBox.Show("Select a valid services.jar first.",
-                    "No input", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
+            { MessageBox.Show("Select services.jar first!", "Missing input", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
 
-            var selected = _checkBoxes
-                .Where(kv => kv.Value.Checked)
-                .Select(kv => kv.Key)
-                .ToList();
-
+            var selected = _checkBoxes.Where(kv => kv.Value.Checked).Select(kv => kv.Key).ToList();
             if (selected.Count == 0)
-            {
-                MessageBox.Show("Select at least one patch.",
-                    "No patches", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
+            { MessageBox.Show("Select at least one patch!", "No patches", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
 
-            SetBusy(true);
+            _patchBtn.Enabled = false;
+            _progress.Visible = true;
             _logBox.Clear();
 
-            try
+            string? error = null;
+            string? result = null;
+
+            await Task.Run(() =>
             {
-                await Task.Run(() => RunPipeline(selected));
+                try { result = RunPipeline(selected); }
+                catch (Exception ex) { error = ex.ToString(); }
+            });
+
+            _patchBtn.Enabled = true;
+            _progress.Visible = false;
+
+            if (error != null)
+            {
+                Log($"[EXCEPTION] {error}");
+                MessageBox.Show($"Error:\n\n{error}", "SmaliPatcherEx Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
-            finally
+            else if (result != null)
             {
-                SetBusy(false);
+                MessageBox.Show($"Done!\n\nModule: {result}", "Success!", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
         }
 
-        // ── PIPELINE ─────────────────────────────────────────────────────────
-        private void RunPipeline(List<string> patchNames)
+        private string? RunPipeline(List<string> patches)
         {
-            _workDir = Path.Combine(Path.GetTempPath(),
-                $"smpx_{DateTime.Now:yyyyMMddHHmmss}");
-            Directory.CreateDirectory(_workDir);
-
+            var work = Path.Combine(Path.GetTempPath(), $"smpx_{DateTime.Now:yyyyMMddHHmmss}");
+            Directory.CreateDirectory(work);
             try
             {
-                Log("══════════════════════════════════════════════");
-                Log($"SmaliPatcherEx v2.0  —  API {_apiLevel}");
-                Log("══════════════════════════════════════════════");
+                Log("═══════════════════════════════════════");
+                Log($" SmaliPatcherEx v2.0  —  API {_apiLevel}");
+                Log("═══════════════════════════════════════");
 
-                // ── Step 1: Tools
-                Log("\n[1/5] Tool setup …");
-                if (!EnsureTools()) return;
+                // Java check
+                Log("\n[1/5] Checking Java...");
+                var jv = Run("java", "-version", work);
+                if (jv.Code != 0 && !jv.Stderr.Contains("version"))
+                    throw new Exception($"Java not found or not working.\n\nOutput:\n{jv.Stderr}\n\nMake sure Java 17 is installed and restart the app.");
+                Log($"[✓] Java: {jv.Stderr.Split('\n')[0]}");
 
-                // ── Step 2: Extract DEX
-                Log("\n[2/5] Extracting DEX from services.jar …");
-                var dexDir = Path.Combine(_workDir, "dex");
+                // Tools
+                Log("\n[2/5] Getting tools...");
+                Directory.CreateDirectory(ToolDir);
+                Download(BAKSMALI_URL, BaksmaliJar, "baksmali");
+                Download(SMALI_URL,    SmaliJar,    "smali");
+
+                // Extract dex
+                Log("\n[3/5] Extracting DEX...");
+                var dexDir = Path.Combine(work, "dex");
                 Directory.CreateDirectory(dexDir);
                 var dexFiles = ExtractDex(_servicesJarPath!, dexDir);
-                if (dexFiles.Count == 0) { Log("[!] No dex found in JAR"); return; }
-                Log($"[✓] {dexFiles.Count} dex file(s) extracted");
+                if (dexFiles.Count == 0) throw new Exception("No classes.dex found inside services.jar!");
+                Log($"[✓] {dexFiles.Count} dex file(s)");
 
-                // ── Step 3: Baksmali
-                Log("\n[3/5] Disassembling to smali …");
-                var smaliDir = Path.Combine(_workDir, "smali");
+                // Baksmali
+                Log("\n[4/5] Disassembling...");
+                var smaliDir = Path.Combine(work, "smali");
                 Directory.CreateDirectory(smaliDir);
                 foreach (var dex in dexFiles)
                 {
-                    if (!RunBaksmali(dex, smaliDir)) return;
+                    Log($"  baksmali ← {Path.GetFileName(dex)}");
+                    var r = Run("java", $"-jar \"{BaksmaliJar}\" disassemble --api {_apiLevel} --output \"{smaliDir}\" \"{dex}\"", work);
+                    if (r.Code != 0) throw new Exception($"baksmali failed:\n{r.Stderr}");
                 }
-                var smaliCount = Directory.GetFiles(smaliDir, "*.smali",
-                    SearchOption.AllDirectories).Length;
-                Log($"[✓] {smaliCount} smali files");
+                var sc = Directory.GetFiles(smaliDir, "*.smali", SearchOption.AllDirectories).Length;
+                Log($"[✓] {sc} smali files");
 
-                // ── Step 4: Patch
-                Log("\n[4/5] Applying patches …");
+                // Patch
+                Log("\n[5a] Patching smali...");
                 var engine = new PatchEngine(smaliDir, _apiLevel);
                 engine.Log += Log;
-                var results = engine.RunAll(patchNames);
+                var results = engine.RunAll(patches);
                 var applied = results.Values.Where(r => r.Applied).Select(r => r.Patch.Name).ToArray();
                 Log($"[✓] Applied: {applied.Length}  Skipped: {results.Count - applied.Length}");
+                if (applied.Length == 0) throw new Exception("No patches applied — target classes not found in this services.jar.\nMake sure the jar matches your device build.");
 
-                if (applied.Length == 0)
-                {
-                    Log("[!] No patches applied — target classes not found in this build");
-                    return;
-                }
+                // Smali recompile
+                Log("\n[5b] Recompiling...");
+                var rebuiltDir = Path.Combine(work, "rebuilt");
+                Directory.CreateDirectory(rebuiltDir);
+                var outDex = Path.Combine(rebuiltDir, "classes.dex");
+                var rs = Run("java", $"-jar \"{SmaliJar}\" assemble --api {_apiLevel} --output \"{outDex}\" \"{smaliDir}\"", work);
+                if (rs.Code != 0) throw new Exception($"smali recompile failed:\n{rs.Stderr}");
+                Log($"[✓] Recompiled ({new FileInfo(outDex).Length/1024} KB)");
 
-                // ── Step 5: Recompile + package
-                Log("\n[5/5] Recompiling & packaging …");
-                var rebuiltDex = Path.Combine(_workDir, "rebuilt", "classes.dex");
-                Directory.CreateDirectory(Path.GetDirectoryName(rebuiltDex)!);
-                if (!RunSmali(smaliDir, rebuiltDex)) return;
+                // Repack jar
+                var patchedJar = Path.Combine(work, "services.jar");
+                RepackJar(_servicesJarPath!, outDex, patchedJar);
 
-                var patchedJar = Path.Combine(_workDir, "services.jar");
-                RepackJar(_servicesJarPath!, rebuiltDex, patchedJar);
-
+                // Build module
                 Directory.CreateDirectory(_outputDir);
-                var modZip = MagiskBuilder.Build(
-                    patchedJar, _outputDir, _fingerprint, applied, Log);
-
-                // Copy patched JAR to output too
                 var outJar = Path.Combine(_outputDir, "services.jar");
-                File.Copy(patchedJar, outJar, overwrite: true);
+                File.Copy(patchedJar, outJar, true);
+                var modZip = MagiskBuilder.Build(patchedJar, _outputDir, _fingerprint, applied, Log);
 
-                Log("\n══════════════════════════════════════════════");
-                Log($"[✓] Module ZIP:   {modZip}");
-                Log($"[✓] Patched JAR:  {outJar}");
-                Log("══════════════════════════════════════════════");
-                Log("Flash module via Magisk / KernelSU / APatch");
-                Log("Reboot to activate patches.");
-
-                Invoke(() =>
-                {
-                    _statusLabel.Text = "Done!";
-                    MessageBox.Show(
-                        $"Module built successfully!\n\n{modZip}",
-                        "SmaliPatcherEx", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                });
+                Log("\n═══════════════════════════════════════");
+                Log($"[✓] Module: {modZip}");
+                Log($"[✓] JAR:    {outJar}");
+                Log("Flash via Magisk / KernelSU → Reboot");
+                return modZip;
             }
             finally
             {
-                try { Directory.Delete(_workDir, true); } catch { }
+                try { Directory.Delete(work, true); } catch { }
             }
         }
 
-        // ── TOOL DOWNLOAD ────────────────────────────────────────────────────
-        private bool EnsureTools()
+        private void Download(string url, string dest, string label)
         {
-            Directory.CreateDirectory(ToolDir);
+            if (File.Exists(dest)) { Log($"[✓] {label}.jar present"); return; }
+            Log($"[*] Downloading {label}.jar ...");
             using var http = new HttpClient();
-            http.Timeout = TimeSpan.FromSeconds(60);
-
-            foreach (var (jar, url, label) in new[]
-            {
-                (BaksmaliJar, BAKSMALI_URL, "baksmali"),
-                (SmaliJar,    SMALI_URL,    "smali"),
-            })
-            {
-                if (File.Exists(jar)) { Log($"[✓] {label}.jar present"); continue; }
-                Log($"[*] Downloading {label}.jar …");
-                try
-                {
-                    var data = http.GetByteArrayAsync(url).GetAwaiter().GetResult();
-                    File.WriteAllBytes(jar, data);
-                    Log($"[✓] {label}.jar  ({data.Length / 1024} KB)");
-                }
-                catch (Exception ex)
-                {
-                    Log($"[!] Download failed: {ex.Message}");
-                    Log($"    Place {label}.jar manually at: {jar}");
-                    Log($"    URL: {url}");
-                    return false;
-                }
-            }
-            return true;
+            http.Timeout = TimeSpan.FromSeconds(120);
+            var data = http.GetByteArrayAsync(url).GetAwaiter().GetResult();
+            File.WriteAllBytes(dest, data);
+            Log($"[✓] {label}.jar  ({data.Length/1024} KB)");
         }
 
-        // ── DEX EXTRACTION ───────────────────────────────────────────────────
-        private List<string> ExtractDex(string jarPath, string outDir)
+        private List<string> ExtractDex(string jar, string outDir)
         {
             var result = new List<string>();
-            using var zip = ZipFile.OpenRead(jarPath);
-            foreach (var entry in zip.Entries)
+            using var zip = ZipFile.OpenRead(jar);
+            foreach (var e in zip.Entries)
             {
-                if (System.Text.RegularExpressions.Regex.IsMatch(
-                    entry.Name, @"^classes\d*\.dex$"))
+                if (System.Text.RegularExpressions.Regex.IsMatch(e.Name, @"^classes\d*\.dex$"))
                 {
-                    var dest = Path.Combine(outDir, entry.Name);
-                    entry.ExtractToFile(dest, overwrite: true);
+                    var dest = Path.Combine(outDir, e.Name);
+                    e.ExtractToFile(dest, true);
                     result.Add(dest);
-                    Log($"  extracted: {entry.Name}  ({entry.Length / 1024} KB)");
+                    Log($"  extracted: {e.Name}  ({e.Length/1024} KB)");
                 }
             }
             return result;
         }
 
-        // ── BAKSMALI / SMALI ─────────────────────────────────────────────────
-        private bool RunBaksmali(string dexPath, string outDir)
+        private void RepackJar(string src, string patchedDex, string out_)
         {
-            Log($"  baksmali ← {Path.GetFileName(dexPath)}");
-            var r = RunJar(BaksmaliJar,
-                $"disassemble --api {_apiLevel} --output \"{outDir}\" \"{dexPath}\"");
-            if (r.ExitCode != 0) { Log($"[!] baksmali error:\n{r.Stderr}"); return false; }
-            return true;
+            var tmp = out_ + ".tmp";
+            using (var s = ZipFile.OpenRead(src))
+            using (var d = ZipFile.Open(tmp, ZipArchiveMode.Create))
+            {
+                foreach (var e in s.Entries)
+                {
+                    if (e.Name == "classes.dex")
+                    { d.CreateEntryFromFile(patchedDex, "classes.dex", CompressionLevel.Optimal); }
+                    else
+                    { using var si = e.Open(); var di = d.CreateEntry(e.FullName, CompressionLevel.Optimal); using var doi = di.Open(); si.CopyTo(doi); }
+                }
+            }
+            File.Move(tmp, out_, true);
+            Log($"[✓] Repacked JAR ({new FileInfo(out_).Length/1024} KB)");
         }
 
-        private bool RunSmali(string smaliDir, string outDex)
+        private (int Code, string Stderr) Run(string exe, string args, string dir)
         {
-            Log($"  smali → {Path.GetFileName(outDex)}");
-            var r = RunJar(SmaliJar,
-                $"assemble --api {_apiLevel} --output \"{outDex}\" \"{smaliDir}\"");
-            if (r.ExitCode != 0) { Log($"[!] smali error:\n{r.Stderr}"); return false; }
-            Log($"[✓] Recompiled  ({new FileInfo(outDex).Length / 1024} KB)");
-            return true;
-        }
-
-        private (int ExitCode, string Stderr) RunJar(string jar, string args)
-        {
-            using var proc = new Process
+            using var p = new Process
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName               = "java",
-                    Arguments              = $"-jar \"{jar}\" {args}",
-                    UseShellExecute        = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError  = true,
-                    CreateNoWindow         = true,
+                    FileName = exe, Arguments = args,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true, RedirectStandardError = true,
+                    CreateNoWindow = true, WorkingDirectory = dir,
                 }
             };
             var sb = new StringBuilder();
-            proc.ErrorDataReceived  += (s, e) => { if (e.Data != null) sb.AppendLine(e.Data); };
-            proc.OutputDataReceived += (s, e) => { if (e.Data != null) Log($"  {e.Data}"); };
-            proc.Start();
-            proc.BeginErrorReadLine();
-            proc.BeginOutputReadLine();
-            proc.WaitForExit();
-            return (proc.ExitCode, sb.ToString());
+            p.ErrorDataReceived  += (s,e) => { if(e.Data!=null){ sb.AppendLine(e.Data); Log($"  {e.Data}"); }};
+            p.OutputDataReceived += (s,e) => { if(e.Data!=null) Log($"  {e.Data}"); };
+            p.Start();
+            p.BeginErrorReadLine();
+            p.BeginOutputReadLine();
+            p.WaitForExit();
+            return (p.ExitCode, sb.ToString());
         }
 
-        // ── JAR REPACK ───────────────────────────────────────────────────────
-        private void RepackJar(string srcJar, string patchedDex, string outJar)
-        {
-            File.Copy(srcJar, outJar, overwrite: true);
-
-            // Rebuild cleanly — replace classes.dex entries
-            var tmp = outJar + ".tmp";
-            using (var src = ZipFile.OpenRead(srcJar))
-            using (var dst = ZipFile.Open(tmp, ZipArchiveMode.Create))
-            {
-                foreach (var entry in src.Entries)
-                {
-                    if (entry.Name == "classes.dex")
-                    {
-                        dst.CreateEntryFromFile(patchedDex, "classes.dex",
-                            CompressionLevel.Optimal);
-                    }
-                    else
-                    {
-                        using var srcStream = entry.Open();
-                        var dstEntry = dst.CreateEntry(entry.FullName, CompressionLevel.Optimal);
-                        using var dstStream = dstEntry.Open();
-                        srcStream.CopyTo(dstStream);
-                    }
-                }
-            }
-            File.Move(tmp, outJar, overwrite: true);
-            Log($"[✓] Repacked JAR  ({new FileInfo(outJar).Length / 1024} KB)");
-        }
-
-        // ── LOGGING ──────────────────────────────────────────────────────────
         private void Log(string msg)
         {
-            if (InvokeRequired)
-            {
-                Invoke(() => Log(msg));
-                return;
-            }
+            if (InvokeRequired) { Invoke(() => Log(msg)); return; }
             _logBox.AppendText(msg + "\n");
             _logBox.ScrollToCaret();
         }
 
-        // ── DESIGNER STUB ────────────────────────────────────────────────────
         private void InitializeComponent()
         {
             SuspendLayout();
             AutoScaleDimensions = new System.Drawing.SizeF(7f, 15f);
-            AutoScaleMode       = AutoScaleMode.Font;
+            AutoScaleMode = AutoScaleMode.Font;
             ResumeLayout(false);
         }
     }
