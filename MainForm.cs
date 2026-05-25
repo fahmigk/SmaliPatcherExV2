@@ -13,8 +13,8 @@ namespace SmaliPatcherEx;
 
 public partial class MainForm : Form
 {
-    private const string BAKSMALI_URL = "https://github.com/baksmali/smali/releases/download/3.0.9/baksmali-3.0.9-fat-release.jar";
-    private const string SMALI_URL = "https://github.com/baksmali/smali/releases/download/3.0.9/smali-3.0.9-fat-release.jar";
+    private const string BAKSMALI_URL = "https://github.com/baksmali/smali/releases/download/3.0.9/baksmali-3.0.9-fat.jar";
+    private const string SMALI_URL = "https://github.com/baksmali/smali/releases/download/3.0.9/smali-3.0.9-fat.jar";
 
     private static readonly string ToolDir =
         Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location)
@@ -475,9 +475,12 @@ public partial class MainForm : Form
                 {
                     outDex = Path.Combine(rebuiltDir, root.DexName);
                     Log($" smali -> {root.DexName}");
-                    var rs = Run("java", $"-jar \"{SmaliJar}\" assemble --api {_apiLevel} --output \"{outDex}\" \"{root.SmaliDir}\"", work);
+
+                    // IMPORTANT: no --api on assemble
+                    var rs = Run("java", $"-jar \"{SmaliJar}\" assemble --output \"{outDex}\" \"{root.SmaliDir}\"", work);
                     if (rs.Code != 0)
                         throw new Exception($"smali recompile failed for {root.DexName}:\n{rs.Stderr}");
+
                     Log($"[✓] Recompiled {root.DexName} ({new FileInfo(outDex).Length / 1024} KB)");
                 }
                 else
