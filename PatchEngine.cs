@@ -1,162 +1,53 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 
-namespace SmaliPatcherEx
+public static class SmaliHelper
 {
-    public class SmaliPatch
+    public static string? FindLocationProviderManager(string root)
     {
-        public string Name        { get; init; } = "";
-        public string Description { get; init; } = "";
-        public string FileGlob    { get; init; } = "";
-        public string Search      { get; init; } = "";
-        public string Replace     { get; init; } = "";
-        public int    AndroidMin  { get; init; } = 1;
-        public int    AndroidMax  { get; init; } = 99;
-        public bool   Multi       { get; init; } = false;
+        if (!Directory.Exists(root)) return null;
+
+        return Directory
+            .EnumerateFiles(root, "LocationProviderManager.smali", SearchOption.AllDirectories)
+            .FirstOrDefault(f =>
+                f.Replace('\\', '/').Contains("/com/android/server/location/provider/"));
     }
 
-    public class PatchResult
+    public static string? GetMethodBlock(string smaliPath, string methodName)
     {
-        public SmaliPatch Patch   { get; init; } = null!;
-        public bool Applied       { get; set; }
-        public List<string> Files { get; } = new();
-        public string Reason      { get; set; } = "";
+        if (!File.Exists(smaliPath)) return null;
+
+        var text = File.ReadAllText(smaliPath, Encoding.UTF8);
+        var pattern = @$"(?ms)^\.method\b[^\n]*\b{Regex.Escape(methodName)}\b[^\n]*\n.*?^\.end method\s*$";
+        var match = Regex.Match(text, pattern, RegexOptions.Multiline);
+        return match.Success ? match.Value : null;
     }
 
-    public static class PatchDefinitions
+    public static void Main(string[] args)
     {
-        public static readonly List<SmaliPatch> All = new()
+        var root = args.Length > 0 ? args[0] : Directory.GetCurrentDirectory();
+        var file = FindLocationProviderManager(root);
+
+        if (file == null)
         {
-            new SmaliPatch
-            {
-                Name        = "mock_location_appops",
-                Description = "Mock Location — flip addTestProvider AppOps branch only",
-                FileGlob    = "location/LocationManagerService.smali",
-                Search      = "if-nez p5, :cond_13",
-                Replace     = "if-eqz p5, :cond_13",
-                AndroidMin  = 33,
-                AndroidMax  = 36
-            },
-
-            new SmaliPatch
-            {
-                Name        = "mock_permission_location_bypass",
-                Description = "Mock Permission — bypass LOCATION_BYPASS check",
-                FileGlob    = "location/LocationPermissions.smali",
-                Search      = "if-nez p0, :cond_9",
-                Replace     = "if-eqz p0, :cond_9",
-                AndroidMin  = 33,
-                AndroidMax  = 36
-            }
-        };
-
-        public static readonly Dictionary<string, SmaliPatch> Map =
-            All.ToDictionary(p => p.Name, StringComparer.OrdinalIgnoreCase);
-    }
-
-    public class PatchEngine
-    {
-        private readonly string _smaliRoot;
-        private readonly int _api;
-        public Action<string>? Log { get; set; }
-
-        public PatchEngine(string smaliRoot, int api)
-        {
-            _smaliRoot = smaliRoot;
-            _api = api;
+            Console.WriteLine("LocationProviderManager.smali not found.");
+            return;
         }
 
-        private void Write(string msg) => Log?.Invoke(msg);
+        Console.WriteLine("Found:");
+        Console.WriteLine(file);
+        Console.WriteLine();
 
-        private IEnumerable<string> GlobFiles(string pattern)
-        {
-            var normalizedPattern = pattern.Replace('\\', '/').TrimStart('/');
-            var allFiles = Directory.GetFiles(_smaliRoot, "*.smali", SearchOption.AllDirectories);
+        var m1 = GetMethodBlock(file, "setMockProviderAllowed");
+        var m2 = GetMethodBlock(file, "setMockProviderLocation");
 
-            return allFiles.Where(file =>
-            {
-                var relative = Path.GetRelativePath(_smaliRoot, file).Replace('\\', '/');
-                return relative.EndsWith(normalizedPattern, StringComparison.OrdinalIgnoreCase);
-            });
-        }
-
-        public PatchResult Apply(SmaliPatch patch)
-        {
-            var result = new PatchResult { Patch = patch };
-
-            if (_api < patch.AndroidMin || _api > patch.AndroidMax)
-            {
-                result.Reason = $"API {_api} out of range [{patch.AndroidMin}–{patch.AndroidMax}]";
-                return result;
-            }
-
-            var targets = GlobFiles(patch.FileGlob).ToList();
-            if (targets.Count == 0)
-            {
-                result.Reason = $"No file matched: {patch.FileGlob}";
-                return result;
-            }
-
-            foreach (var file in targets)
-            {
-                var text = File.ReadAllText(file);
-
-                if (!text.Contains(patch.Search))
-                    continue;
-
-                var patched = patch.Multi
-                    ? text.Replace(patch.Search, patch.Replace)
-                    : ReplaceFirst(text, patch.Search, patch.Replace);
-
-                if (patched != text)
-                {
-                    File.WriteAllText(file, patched);
-                    var relative = Path.GetRelativePath(_smaliRoot, file).Replace('\\', '/');
-                    result.Files.Add($"{relative} (1×)");
-                    result.Applied = true;
-                }
-            }
-
-            if (!result.Applied)
-                result.Reason = "Pattern not found in matched file(s)";
-
-            return result;
-        }
-
-        private static string ReplaceFirst(string text, string search, string replace)
-        {
-            var index = text.IndexOf(search, StringComparison.Ordinal);
-            if (index < 0)
-                return text;
-
-            return text.Substring(0, index) + replace + text.Substring(index + search.Length);
-        }
-
-        public Dictionary<string, PatchResult> RunAll(IEnumerable<string> names)
-        {
-            var results = new Dictionary<string, PatchResult>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var name in names)
-            {
-                if (!PatchDefinitions.Map.TryGetValue(name, out var patch))
-                {
-                    Write($"[!] Unknown patch: {name}");
-                    continue;
-                }
-
-                Write($"[*] Applying: {name} ...");
-                var r = Apply(patch);
-                results[name] = r;
-
-                if (r.Applied)
-                    Write($"[✓] {name}: {string.Join(", ", r.Files)}");
-                else
-                    Write($"[-] {name}: skipped — {r.Reason}");
-            }
-
-            return results;
-        }
+        Console.WriteLine("=== setMockProviderAllowed ===");
+        Console.WriteLine(m1 ?? "Method not found");
+        Console.WriteLine();
+        Console.WriteLine("=== setMockProviderLocation ===");
+        Console.WriteLine(m2 ?? "Method not found");
     }
 }
