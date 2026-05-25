@@ -38,6 +38,17 @@ namespace SmaliPatcherEx
                 Replace     = "if-eqz p5, :cond_13",
                 AndroidMin  = 33,
                 AndroidMax  = 36
+            },
+
+            new SmaliPatch
+            {
+                Name        = "mock_permission_location_bypass",
+                Description = "Mock Permission — bypass LOCATION_BYPASS check",
+                FileGlob    = "location/LocationPermissions.smali",
+                Search      = "if-nez p0, :cond_9",
+                Replace     = "if-eqz p0, :cond_9",
+                AndroidMin  = 33,
+                AndroidMax  = 36
             }
         };
 
