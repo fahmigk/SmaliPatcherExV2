@@ -27,13 +27,12 @@ jobs:
           New-Item -ItemType Directory -Force -Path tools | Out-Null
 
           # Direct fat-jar URLs from JesusFreke/smali v3.0.9 release
-          $bak = "https://github.com/baksmali/smali/releases/download/3.0.9/baksmali-3.0.9-fat.jar"
-          $sma = "https://github.com/baksmali/smali/releases/download/3.0.9/smali-3.0.9-fat.jar"
+          $bak = "https://github.com/JesusFreke/smali/releases/download/v3.0.9/baksmali-3.0.9-fat.jar"
+          $sma = "https://github.com/JesusFreke/smali/releases/download/v3.0.9/smali-3.0.9-fat.jar"
 
           Invoke-WebRequest -Uri $bak -OutFile tools/baksmali.jar -UseBasicParsing -ErrorAction Stop
           Invoke-WebRequest -Uri $sma -OutFile tools/smali.jar   -UseBasicParsing -ErrorAction Stop
 
-          # Sanity checks so we don't silently save HTML/404 pages
           if (-not (Test-Path tools/baksmali.jar) -or (Get-Item tools/baksmali.jar).Length -lt 100000) {
             throw "baksmali.jar looks wrong or is too small"
           }
@@ -44,7 +43,7 @@ jobs:
           Write-Host "baksmali: $((Get-Item tools/baksmali.jar).Length) bytes"
           Write-Host "smali:    $((Get-Item tools/smali.jar).Length) bytes"
 
-            - name: Publish Windows build
+      - name: Publish Windows build
         run: dotnet publish -c Release -r win-x64 --self-contained false -o publish
 
       - name: Upload EXE artifact
